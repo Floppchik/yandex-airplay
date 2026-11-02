@@ -1,0 +1,32 @@
+name: Build Static Shairport-Sync
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build static binary in Alpine ARMHF
+        run: |
+          docker run --rm --platform linux/arm/v7 -v ${{ github.workspace }}:/output alpine:3.18 /bin/sh -c "
+            apk update &&
+            apk add alpine-sdk autoconf automake libtool git alsa-lib-dev alsa-lib-static openssl-dev openssl-libs-static popt-dev popt-static libconfig-dev libconfig-static &&
+            git clone --depth 1 --branch 3.3.9 https://github.com/mikebrady/shairport-sync.git &&
+            cd shairport-sync &&
+            autoreconf -fi &&
+            ./configure --prefix=/usr --with-alsa --with-tinysvcmdns --with-ssl=openssl --with-metadata LDFLAGS='-static -all-static' &&
+            make -j\$(nproc) &&
+            strip shairport-sync &&
+            cp shairport-sync /output/shairport-sync
+          "
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shairport-sync-armhf
+          path: shairport-sync
