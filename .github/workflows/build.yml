@@ -1,13 +1,10 @@
-
-name: Build Static shairport-sync for Yandex Station Mini (armhf)
+name: Build Hybrid shairport-sync for Yandex Station Mini (armhf)
 
 on:
   push:
     branches: [ master, main ]
     paths:
       - '.github/workflows/build.yml'
-  pull_request:
-    branches: [ master, main ]
   workflow_dispatch:
 
 jobs:
@@ -38,6 +35,8 @@ jobs:
         run: |
           mkdir -p /tmp/sysroot/include /tmp/sysroot/lib /tmp/sysroot/lib/pkgconfig
           mkdir -p /tmp/deps
+          sudo mkdir -p /system/workdir/lib/alsa
+          sudo chown -R $USER /system
 
       - name: Build static alsa-lib
         run: |
@@ -48,6 +47,7 @@ jobs:
           ./configure \
             --host=arm-linux-gnueabihf \
             --prefix=/tmp/sysroot \
+            --with-configdir=/system/workdir/lib/alsa \
             --enable-static \
             --disable-shared \
             --disable-python \
@@ -98,7 +98,7 @@ jobs:
           cp -r include/mbedtls/* /tmp/sysroot/include/mbedtls/
           cp library/libmbedcrypto.a library/libmbedtls.a library/libmbedx509.a /tmp/sysroot/lib/
 
-      - name: Build static shairport-sync 3.3.9
+      - name: Build shairport-sync 3.3.9
         run: |
           cd /tmp/deps
           git clone --branch 3.3.9 --depth 1 https://github.com/mikebrady/shairport-sync.git
@@ -109,8 +109,8 @@ jobs:
           export CFLAGS="-I/tmp/sysroot/include -std=gnu99 -O2"
           export CXXFLAGS="-I/tmp/sysroot/include -O2"
           export CPPFLAGS="-I/tmp/sysroot/include"
-          export LDFLAGS="-L/tmp/sysroot/lib -static"
-          export LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm -ldl -lrt"
+          export LDFLAGS="-L/tmp/sysroot/lib -static-libgcc -static-libstdc++"
+          export LIBS="-Wl,-Bstatic -lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -Wl,-Bdynamic -lpthread -lm -ldl -lrt"
           
           ./configure \
             --host=arm-linux-gnueabihf \
@@ -120,15 +120,11 @@ jobs:
             --with-ssl=mbedtls \
             --with-metadata
             
-          make -j$(nproc) LDFLAGS="-static -L/tmp/sysroot/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm -ldl -lrt"
+          make -j$(nproc) \
+            LDFLAGS="-L/tmp/sysroot/lib -static-libgcc -static-libstdc++" \
+            LIBS="-Wl,-Bstatic -lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -Wl,-Bdynamic -lpthread -lm -ldl -lrt"
           
           arm-linux-gnueabihf-strip shairport-sync
-          ls -lh shairport-sync
-          file shairport-sync
-
-      - name: Verify static binary
-        run: |
-          cd /tmp/deps/shairport-sync
           mkdir -p $GITHUB_WORKSPACE/dist
           cp shairport-sync $GITHUB_WORKSPACE/dist/
 
