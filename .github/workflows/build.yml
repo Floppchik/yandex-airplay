@@ -30,7 +30,8 @@ jobs:
             pkg-config \
             git \
             wget \
-            bzip2
+            bzip2 \
+            texinfo
 
       - name: Prepare build environment & sysroot
         run: |
@@ -70,14 +71,17 @@ jobs:
       - name: Build static libconfig
         run: |
           cd /tmp/deps
-          wget -q https://hyperrealm.github.io/libconfig/dist/libconfig-1.7.3.tar.gz
-          tar -xzf libconfig-1.7.3.tar.gz
-          cd libconfig-1.7.3
+          git clone --branch v1.7.3 --depth 1 https://github.com/hyperrealm/libconfig.git
+          cd libconfig
+          autoreconf -fi
           ./configure \
             --host=arm-linux-gnueabihf \
             --prefix=/tmp/sysroot \
             --enable-static \
-            --disable-shared
+            --disable-shared \
+            --disable-doc \
+            --disable-examples \
+            --disable-tests
           make -j$(nproc)
           make install
 
