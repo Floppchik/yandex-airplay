@@ -1,32 +1,134 @@
-name: Build Static Shairport-Sync
+name: Build Static shairport-sync for Yandex Station Mini (armhf)
 
 on:
-  workflow_dispatch:
   push:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-armhf-shairport:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Build static binary in Alpine ARMHF
+      - name: Install build tools & ARM cross-compiler
         run: |
-          docker run --rm --platform linux/arm/v7 -v ${{ github.workspace }}:/output alpine:3.18 /bin/sh -c "
-            apk update &&
-            apk add alpine-sdk autoconf automake libtool git alsa-lib-dev alsa-lib-static openssl-dev openssl-libs-static popt-dev popt-static libconfig-dev libconfig-static &&
-            git clone --depth 1 --branch 3.3.9 https://github.com/mikebrady/shairport-sync.git &&
-            cd shairport-sync &&
-            autoreconf -fi &&
-            ./configure --prefix=/usr --with-alsa --with-tinysvcmdns --with-ssl=openssl --with-metadata LDFLAGS='-static -all-static' &&
-            make -j\$(nproc) &&
-            strip shairport-sync &&
-            cp shairport-sync /output/shairport-sync
-          "
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            git \
+            wget \
+            bzip2
 
-      - name: Upload Artifact
+      - name: Prepare build environment & sysroot
+        run: |
+          mkdir -p /tmp/sysroot/include /tmp/sysroot/lib /tmp/sysroot/lib/pkgconfig
+          mkdir -p /tmp/deps
+
+      - name: Build static alsa-lib
+        run: |
+          cd /tmp/deps
+          wget -q https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.10.tar.bz2
+          tar -xjf alsa-lib-1.2.10.tar.bz2
+          cd alsa-lib-1.2.10
+          ./configure \
+            --host=arm-linux-gnueabihf \
+            --prefix=/tmp/sysroot \
+            --enable-static \
+            --disable-shared \
+            --disable-python \
+            --with-debug=no
+          make -j$(nproc)
+          make install
+
+      - name: Build static libpopt
+        run: |
+          cd /tmp/deps
+          wget -q https://fossies.org/linux/misc/popt-1.19.tar.gz || wget -q http://ftp.rpm.org/popt/releases/popt-1.x/popt-1.19.tar.gz
+          tar -xzf popt-1.19.tar.gz
+          cd popt-1.19
+          ./configure \
+            --host=arm-linux-gnueabihf \
+            --prefix=/tmp/sysroot \
+            --enable-static \
+            --disable-shared
+          make -j$(nproc)
+          make install
+
+      - name: Build static libconfig
+        run: |
+          cd /tmp/deps
+          wget -q https://hyperrealm.github.io/libconfig/dist/libconfig-1.7.3.tar.gz
+          tar -xzf libconfig-1.7.3.tar.gz
+          cd libconfig-1.7.3
+          ./configure \
+            --host=arm-linux-gnueabihf \
+            --prefix=/tmp/sysroot \
+            --enable-static \
+            --disable-shared
+          make -j$(nproc)
+          make install
+
+      - name: Build static mbedtls
+        run: |
+          cd /tmp/deps
+          wget -q https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v2.28.8.tar.gz -O mbedtls-2.28.8.tar.gz
+          tar -xzf mbedtls-2.28.8.tar.gz
+          cd mbedtls-2.28.8
+          make CC=arm-linux-gnueabihf-gcc AR=arm-linux-gnueabihf-ar -j$(nproc) lib
+          mkdir -p /tmp/sysroot/include/mbedtls
+          cp -r include/mbedtls/* /tmp/sysroot/include/mbedtls/
+          cp library/libmbedcrypto.a library/libmbedtls.a library/libmbedx509.a /tmp/sysroot/lib/
+
+      - name: Build static shairport-sync 3.3.9
+        run: |
+          cd /tmp/deps
+          git clone --branch 3.3.9 --depth 1 https://github.com/mikebrady/shairport-sync.git
+          cd shairport-sync
+          autoreconf -fi
+          
+          export PKG_CONFIG_PATH="/tmp/sysroot/lib/pkgconfig"
+          export CFLAGS="-I/tmp/sysroot/include -O2"
+          export CPPFLAGS="-I/tmp/sysroot/include"
+          export LDFLAGS="-L/tmp/sysroot/lib -static"
+          export LIBS="-lpthread -lm -ldl -lrt"
+          
+          ./configure \
+            --host=arm-linux-gnueabihf \
+            --prefix=/tmp/sysroot \
+            --with-alsa \
+            --with-tinysvcmdns \
+            --with-ssl=mbedtls \
+            --with-metadata \
+            --with-configfile
+            
+          make -j$(nproc) LDFLAGS="-all-static -L/tmp/sysroot/lib"
+          
+          arm-linux-gnueabihf-strip shairport-sync
+          ls -lh shairport-sync
+          file shairport-sync
+
+      - name: Verify static binary
+        run: |
+          cd /tmp/deps/shairport-sync
+          mkdir -p $GITHUB_WORKSPACE/dist
+          cp shairport-sync $GITHUB_WORKSPACE/dist/
+
+      - name: Upload shairport-sync artifact
         uses: actions/upload-artifact@v4
         with:
-          name: shairport-sync-armhf
-          path: shairport-sync
+          name: shairport-sync-armhf-static
+          path: dist/shairport-sync
+          if-no-files-found: error
