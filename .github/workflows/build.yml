@@ -120,7 +120,7 @@ jobs:
             --with-ssl=mbedtls \
             --with-metadata
             
-          make -j$(nproc) LDFLAGS="-all-static -L/tmp/sysroot/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm -ldl -lrt"
+          make -j$(nproc) LDFLAGS="-static -L/tmp/sysroot/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm -ldl -lrt"
           
           arm-linux-gnueabihf-strip shairport-sync
           ls -lh shairport-sync
