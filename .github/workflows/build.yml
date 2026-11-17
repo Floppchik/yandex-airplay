@@ -106,9 +106,10 @@ jobs:
           
           export PKG_CONFIG_PATH="/tmp/sysroot/lib/pkgconfig"
           export CFLAGS="-I/tmp/sysroot/include -std=gnu99 -O2"
+          export CXXFLAGS="-I/tmp/sysroot/include -O2"
           export CPPFLAGS="-I/tmp/sysroot/include"
           export LDFLAGS="-L/tmp/sysroot/lib -static"
-          export LIBS="-lpthread -lm -ldl -lrt"
+          export LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm -ldl -lrt"
           
           ./configure \
             --host=arm-linux-gnueabihf \
@@ -116,10 +117,9 @@ jobs:
             --with-alsa \
             --with-tinysvcmdns \
             --with-ssl=mbedtls \
-            --with-metadata \
-            --with-configfile
+            --with-metadata
             
-          make -j$(nproc) LDFLAGS="-all-static -L/tmp/sysroot/lib"
+          make -j$(nproc) LDFLAGS="-all-static -L/tmp/sysroot/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm -ldl -lrt"
           
           arm-linux-gnueabihf-strip shairport-sync
           ls -lh shairport-sync
