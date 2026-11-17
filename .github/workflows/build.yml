@@ -81,7 +81,8 @@ jobs:
             --disable-shared \
             --disable-doc \
             --disable-examples \
-            --disable-tests
+            --disable-tests \
+            CFLAGS="-std=gnu99 -O2"
           make -j$(nproc)
           make install
 
@@ -104,7 +105,7 @@ jobs:
           autoreconf -fi
           
           export PKG_CONFIG_PATH="/tmp/sysroot/lib/pkgconfig"
-          export CFLAGS="-I/tmp/sysroot/include -O2"
+          export CFLAGS="-I/tmp/sysroot/include -std=gnu99 -O2"
           export CPPFLAGS="-I/tmp/sysroot/include"
           export LDFLAGS="-L/tmp/sysroot/lib -static"
           export LIBS="-lpthread -lm -ldl -lrt"
