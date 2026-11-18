@@ -1,4 +1,3 @@
-
 name: Build Static Musl shairport-sync for Yandex Station Mini
 
 on:
