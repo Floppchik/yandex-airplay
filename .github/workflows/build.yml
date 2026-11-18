@@ -15,121 +15,81 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            git \
-            wget \
-            curl \
-            bzip2 \
-            xz-utils \
-            texinfo
+      - name: Set up QEMU for ARMv7
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm/v7
 
-      - name: Download ARMv7 musl cross-compiler
+      - name: Build static shairport-sync inside Alpine ARMv7
         run: |
-          mkdir -p /tmp/toolchain /tmp/sysroot/include /tmp/sysroot/lib /tmp/sysroot/lib/pkgconfig /tmp/deps
-          cd /tmp/toolchain
-          wget -q https://musl.cc/arm-linux-musleabihf-cross.tgz
-          tar -xzf arm-linux-musleabihf-cross.tgz --strip-components=1
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          docker run --rm --platform linux/arm/v7 -v "$GITHUB_WORKSPACE/dist:/dist" alpine:3.19 sh -e -c '
+            apk add --no-cache \
+              build-base \
+              autoconf \
+              automake \
+              libtool \
+              pkgconf \
+              git \
+              wget \
+              bzip2 \
+              tar \
+              linux-headers \
+              popt-dev \
+              popt-static
 
-      - name: Build static alsa-lib
-        run: |
-          export PATH="/tmp/toolchain/bin:$PATH"
-          cd /tmp/deps
-          wget -q https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.10.tar.bz2
-          tar -xjf alsa-lib-1.2.10.tar.bz2
-          cd alsa-lib-1.2.10
-          ./configure \
-            --host=arm-linux-musleabihf \
-            --prefix=/tmp/sysroot \
-            --with-configdir=/system/workdir/lib/alsa \
-            --enable-static \
-            --disable-shared \
-            --disable-python \
-            --with-debug=no
-          make -j$(nproc)
-          make install
+            mkdir -p /tmp/deps && cd /tmp/deps
+            wget -q -O alsa-lib.tar.bz2 https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.10.tar.bz2 || \
+              wget -q -O alsa-lib.tar.bz2 https://fossies.org/linux/misc/alsa-lib-1.2.10.tar.bz2
+            tar -xjf alsa-lib.tar.bz2
+            cd alsa-lib-1.2.10
+            ./configure \
+              --prefix=/usr/local \
+              --with-configdir=/system/workdir/lib/alsa \
+              --enable-static \
+              --disable-shared \
+              --disable-python \
+              --without-versioned \
+              --with-debug=no
+            make -j$(nproc) && make install
 
-      - name: Build static libpopt
-        run: |
-          export PATH="/tmp/toolchain/bin:$PATH"
-          cd /tmp/deps
-          wget -q https://fossies.org/linux/misc/popt-1.19.tar.gz || wget -q http://ftp.rpm.org/popt/releases/popt-1.x/popt-1.19.tar.gz
-          tar -xzf popt-1.19.tar.gz
-          cd popt-1.19
-          ./configure \
-            --host=arm-linux-musleabihf \
-            --prefix=/tmp/sysroot \
-            --enable-static \
-            --disable-shared
-          make -j$(nproc)
-          make install
+            git clone --branch v1.7.3 --depth 1 https://github.com/hyperrealm/libconfig.git /tmp/deps/libconfig
+            cd /tmp/deps/libconfig
+            autoreconf -fi
+            ./configure \
+              --prefix=/usr/local \
+              --enable-static \
+              --disable-shared \
+              --disable-doc \
+              --disable-examples \
+              --disable-tests \
+              CFLAGS="-std=gnu99 -O2"
+            make -j$(nproc) && make install
 
-      - name: Build static libconfig
-        run: |
-          export PATH="/tmp/toolchain/bin:$PATH"
-          cd /tmp/deps
-          git clone --branch v1.7.3 --depth 1 https://github.com/hyperrealm/libconfig.git
-          cd libconfig
-          autoreconf -fi
-          ./configure \
-            --host=arm-linux-musleabihf \
-            --prefix=/tmp/sysroot \
-            --enable-static \
-            --disable-shared \
-            --disable-doc \
-            --disable-examples \
-            --disable-tests \
-            CFLAGS="-std=gnu99 -O2"
-          make -j$(nproc)
-          make install
+            git clone --branch v2.28.8 --depth 1 https://github.com/Mbed-TLS/mbedtls.git /tmp/deps/mbedtls
+            cd /tmp/deps/mbedtls
+            make -j$(nproc) lib
+            cp -r include/mbedtls /usr/local/include/
+            cp library/libmbedcrypto.a library/libmbedtls.a library/libmbedx509.a /usr/local/lib/
 
-      - name: Build static mbedtls
-        run: |
-          export PATH="/tmp/toolchain/bin:$PATH"
-          cd /tmp/deps
-          wget -q https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v2.28.8.tar.gz -O mbedtls-2.28.8.tar.gz
-          tar -xzf mbedtls-2.28.8.tar.gz
-          cd mbedtls-2.28.8
-          make CC=arm-linux-musleabihf-gcc AR=arm-linux-musleabihf-ar -j$(nproc) lib
-          mkdir -p /tmp/sysroot/include/mbedtls
-          cp -r include/mbedtls/* /tmp/sysroot/include/mbedtls/
-          cp library/libmbedcrypto.a library/libmbedtls.a library/libmbedx509.a /tmp/sysroot/lib/
-
-      - name: Build static shairport-sync 3.3.9
-        run: |
-          export PATH="/tmp/toolchain/bin:$PATH"
-          cd /tmp/deps
-          git clone --branch 3.3.9 --depth 1 https://github.com/mikebrady/shairport-sync.git
-          cd shairport-sync
-          autoreconf -fi
-          
-          export PKG_CONFIG_PATH="/tmp/sysroot/lib/pkgconfig"
-          export CFLAGS="-I/tmp/sysroot/include -std=gnu99 -O2 -D_GNU_SOURCE"
-          export CXXFLAGS="-I/tmp/sysroot/include -O2"
-          export CPPFLAGS="-I/tmp/sysroot/include"
-          export LDFLAGS="-L/tmp/sysroot/lib -static"
-          export LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
-          
-          ./configure \
-            --host=arm-linux-musleabihf \
-            --prefix=/tmp/sysroot \
-            --with-alsa \
-            --with-tinysvcmdns \
-            --with-ssl=mbedtls \
-            --with-metadata
-            
-          make -j$(nproc) LDFLAGS="-static -L/tmp/sysroot/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
-          
-          arm-linux-musleabihf-strip shairport-sync
-          mkdir -p $GITHUB_WORKSPACE/dist
-          cp shairport-sync $GITHUB_WORKSPACE/dist/
+            git clone --branch 3.3.9 --depth 1 https://github.com/mikebrady/shairport-sync.git /tmp/deps/shairport-sync
+            cd /tmp/deps/shairport-sync
+            autoreconf -fi
+            PKG_CONFIG_PATH="/usr/local/lib/pkgconfig" \
+            CFLAGS="-I/usr/local/include -std=gnu99 -O2 -D_GNU_SOURCE" \
+            CPPFLAGS="-I/usr/local/include" \
+            LDFLAGS="-L/usr/local/lib -static" \
+            LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm" \
+            ./configure \
+              --prefix=/usr/local \
+              --with-alsa \
+              --with-tinysvcmdns \
+              --with-ssl=mbedtls \
+              --with-metadata
+            make -j$(nproc) LDFLAGS="-static -L/usr/local/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
+            strip shairport-sync
+            cp shairport-sync /dist/shairport-sync
+          '
 
       - name: Upload shairport-sync artifact
         uses: actions/upload-artifact@v4
