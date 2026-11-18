@@ -30,6 +30,8 @@ jobs:
               automake \
               libtool \
               pkgconf \
+              bison \
+              flex \
               git \
               wget \
               bzip2 \
@@ -81,14 +83,14 @@ jobs:
             CFLAGS="-I/usr/local/include -std=gnu99 -O2 -D_GNU_SOURCE" \
             CPPFLAGS="-I/usr/local/include" \
             LDFLAGS="-L/usr/local/lib -static" \
-            LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm" \
+            LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lrt -lpthread -lm" \
             ./configure \
               --prefix=/usr/local \
               --with-alsa \
               --with-tinysvcmdns \
               --with-ssl=mbedtls \
               --with-metadata
-            make -j$(nproc) LDFLAGS="-static -L/usr/local/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
+            make -j$(nproc)
             strip shairport-sync
             cp shairport-sync /dist/shairport-sync
             file /dist/shairport-sync
