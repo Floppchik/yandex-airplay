@@ -15,10 +15,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU for ARMv7
+      - name: Set up QEMU for ARM
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: arm/v7
+          platforms: arm
 
       - name: Build static shairport-sync inside Alpine ARMv7
         run: |
@@ -34,6 +34,7 @@ jobs:
               wget \
               bzip2 \
               tar \
+              file \
               linux-headers \
               popt-dev \
               popt-static
@@ -60,6 +61,7 @@ jobs:
               --prefix=/usr/local \
               --enable-static \
               --disable-shared \
+              --disable-cxx \
               --disable-doc \
               --disable-examples \
               --disable-tests \
@@ -89,6 +91,7 @@ jobs:
             make -j$(nproc) LDFLAGS="-static -L/usr/local/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
             strip shairport-sync
             cp shairport-sync /dist/shairport-sync
+            file /dist/shairport-sync
           '
 
       - name: Upload shairport-sync artifact
