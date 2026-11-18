@@ -1,3 +1,4 @@
+
 name: Build Static Musl shairport-sync for Yandex Station Mini
 
 on:
@@ -15,16 +16,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build tools & Bootlin musl ARM toolchain
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf automake libtool pkg-config git wget curl bzip2 xz-utils texinfo
+          sudo apt-get install -y \
+            build-essential \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            git \
+            wget \
+            curl \
+            bzip2 \
+            xz-utils \
+            texinfo
+
+      - name: Download ARMv7 musl cross-compiler
+        run: |
           mkdir -p /tmp/toolchain /tmp/sysroot/include /tmp/sysroot/lib /tmp/sysroot/lib/pkgconfig /tmp/deps
           cd /tmp/toolchain
-          BASE_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs"
-          TARBALL=$(curl -s "$BASE_URL/" | grep -oE 'armv7-eabihf--musl--stable-[^"]+\.tar\.(xz|bz2)' | head -n 1)
-          wget -q "$BASE_URL/$TARBALL"
-          tar -xf "$TARBALL" --strip-components=1
+          wget -q https://musl.cc/arm-linux-musleabihf-cross.tgz
+          tar -xzf arm-linux-musleabihf-cross.tgz --strip-components=1
 
       - name: Build static alsa-lib
         run: |
@@ -34,7 +47,7 @@ jobs:
           tar -xjf alsa-lib-1.2.10.tar.bz2
           cd alsa-lib-1.2.10
           ./configure \
-            --host=arm-buildroot-linux-musleabihf \
+            --host=arm-linux-musleabihf \
             --prefix=/tmp/sysroot \
             --with-configdir=/system/workdir/lib/alsa \
             --enable-static \
@@ -52,7 +65,7 @@ jobs:
           tar -xzf popt-1.19.tar.gz
           cd popt-1.19
           ./configure \
-            --host=arm-buildroot-linux-musleabihf \
+            --host=arm-linux-musleabihf \
             --prefix=/tmp/sysroot \
             --enable-static \
             --disable-shared
@@ -67,7 +80,7 @@ jobs:
           cd libconfig
           autoreconf -fi
           ./configure \
-            --host=arm-buildroot-linux-musleabihf \
+            --host=arm-linux-musleabihf \
             --prefix=/tmp/sysroot \
             --enable-static \
             --disable-shared \
@@ -85,7 +98,7 @@ jobs:
           wget -q https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v2.28.8.tar.gz -O mbedtls-2.28.8.tar.gz
           tar -xzf mbedtls-2.28.8.tar.gz
           cd mbedtls-2.28.8
-          make CC=arm-buildroot-linux-musleabihf-gcc AR=arm-buildroot-linux-musleabihf-ar -j$(nproc) lib
+          make CC=arm-linux-musleabihf-gcc AR=arm-linux-musleabihf-ar -j$(nproc) lib
           mkdir -p /tmp/sysroot/include/mbedtls
           cp -r include/mbedtls/* /tmp/sysroot/include/mbedtls/
           cp library/libmbedcrypto.a library/libmbedtls.a library/libmbedx509.a /tmp/sysroot/lib/
@@ -97,25 +110,25 @@ jobs:
           git clone --branch 3.3.9 --depth 1 https://github.com/mikebrady/shairport-sync.git
           cd shairport-sync
           autoreconf -fi
-
+          
           export PKG_CONFIG_PATH="/tmp/sysroot/lib/pkgconfig"
-          export CFLAGS="-I/tmp/sysroot/include -std=gnu99 -O2"
+          export CFLAGS="-I/tmp/sysroot/include -std=gnu99 -O2 -D_GNU_SOURCE"
           export CXXFLAGS="-I/tmp/sysroot/include -O2"
           export CPPFLAGS="-I/tmp/sysroot/include"
           export LDFLAGS="-L/tmp/sysroot/lib -static"
           export LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
-
+          
           ./configure \
-            --host=arm-buildroot-linux-musleabihf \
+            --host=arm-linux-musleabihf \
             --prefix=/tmp/sysroot \
             --with-alsa \
             --with-tinysvcmdns \
             --with-ssl=mbedtls \
             --with-metadata
-
+            
           make -j$(nproc) LDFLAGS="-static -L/tmp/sysroot/lib" LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lasound -lpopt -lconfig -lpthread -lm"
-
-          arm-buildroot-linux-musleabihf-strip shairport-sync
+          
+          arm-linux-musleabihf-strip shairport-sync
           mkdir -p $GITHUB_WORKSPACE/dist
           cp shairport-sync $GITHUB_WORKSPACE/dist/
 
